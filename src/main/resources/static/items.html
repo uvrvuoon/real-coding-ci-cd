@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>중고마켓 - 메인</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f5f6f7; margin: 0; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .search-box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .search-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+        .search-row select, .search-row input[type="text"], .search-row input[type="number"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; background-color: #ff6f0f; color: white; font-weight: bold; }
+        .btn:hover { background-color: #e65c00; }
+        .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
+        .item-card { background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; }
+        .item-card:hover { transform: translateY(-5px); }
+        .item-card img { width: 100%; height: 160px; object-fit: cover; border-radius: 4px; margin-bottom: 10px; }
+        .status-badge { display: inline-block; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 12px; color: white; margin-bottom: 8px; }
+        .status-sale { background-color: #ff6f0f; }
+        .status-res { background-color: #28a745; }
+        .status-comp { background-color: #6c757d; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2 style="margin: 0; color: #ff6f0f; cursor: pointer;" onclick="location.reload()">🥕 중고마켓</h2>
+    <div>
+        <button class="btn" onclick="location.href='/register.html'">물품 등록</button>
+        <button class="btn" onclick="location.href='/chat_list.html'">채팅 목록</button>
+        <button class="btn" onclick="location.href='/mypage.html'">마이페이지</button>
+        <button class="btn" style="background-color: #888;" onclick="logout()">로그아웃</button>
+        <button class="btn btn-primary" onclick="location.href='/chat_list.html'" style="margin-right: 10px;">💬 내 채팅</button>
+    </div>
+</div>
+
+<!-- AND/OR/NOT 복합 조건 검색 영역 -->
+<div class="search-box">
+    <h4 style="margin-top: 0;">🔍 복합 조건 검색</h4>
+    <div class="search-row">
+        <input type="text" id="title" placeholder="물품 제목 검색">
+        <label><input type="checkbox" id="notTitle"> 제외(NOT)</label>
+
+        <!-- operator1: 제목 조건과 카테고리 조건을 AND/OR로 연결 -->
+        <select id="operator1">
+            <option value="AND">AND</option>
+            <option value="OR">OR</option>
+        </select>
+
+        <select id="category">
+            <option value="">카테고리 전체</option>
+            <option value="디지털기기">디지털기기</option>
+            <option value="스포츠">스포츠</option>
+            <option value="도서">도서</option>
+            <option value="가구">가구</option>
+            <option value="티켓">티켓</option>
+            <option value="기타">기타</option>
+        </select>
+        <label><input type="checkbox" id="notCategory"> 제외(NOT)</label>
+
+        <!-- operator2: 카테고리 조건과 가격 조건을 AND/OR로 연결 -->
+        <select id="operator2">
+            <option value="AND">AND</option>
+            <option value="OR">OR</option>
+        </select>
+
+        <input type="number" id="maxPrice" placeholder="최대 예산(원)">
+        <label><input type="checkbox" id="notPrice"> 초과(NOT)</label>
+
+        <select id="sortBy" style="margin-left: auto;">
+            <option value="latest">최신 등록순</option>
+            <option value="priceAsc">가격 낮은순</option>
+            <option value="priceDesc">가격 높은순</option>
+        </select>
+
+        <button class="btn" onclick="searchItems()">검색</button>
+    </div>
+</div>
+
+<div class="item-grid" id="itemGrid"></div>
+
+<script>
+    window.onload = searchItems;
+
+    async function searchItems() {
+        const title = document.getElementById('title').value.trim();
+        const notTitle = document.getElementById('notTitle').checked;
+        const operator1 = document.getElementById('operator1').value;
+        const category = document.getElementById('category').value;
+        const notCategory = document.getElementById('notCategory').checked;
+        const operator2 = document.getElementById('operator2').value;
+        const maxPrice = document.getElementById('maxPrice').value;
+        const notPrice = document.getElementById('notPrice').checked;
+        const sortBy = document.getElementById('sortBy').value;
+
+        // 서버의 ItemSearchController.searchItems()로 조건을 모두 전달한다
+        const params = new URLSearchParams();
+        if (title) params.append('title', title);
+        params.append('notTitle', notTitle);
+        params.append('operator1', operator1);
+        if (category) params.append('category', category);
+        params.append('notCategory', notCategory);
+        params.append('operator2', operator2);
+        if (maxPrice) params.append('maxPrice', maxPrice);
+        params.append('notPrice', notPrice);
+        params.append('sortBy', sortBy);
+
+        try {
+            const response = await fetch(`/api/items/search?${params.toString()}`);
+            if (response.ok) {
+                const items = await response.json();
+                displayItems(items);
+            } else if (response.status === 401) {
+                alert("로그인이 만료되었습니다. 다시 로그인해주세요.");
+                location.href = '/index.html';
+            }
+        } catch (error) {
+            console.error("검색 중 오류 발생:", error);
+        }
+    }
+
+    function displayItems(items) {
+        const grid = document.getElementById('itemGrid');
+        grid.innerHTML = '';
+
+        if (items.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #666; padding: 50px;">조건에 맞는 물품이 없습니다.</div>';
+            return;
+        }
+
+        items.forEach(item => {
+            let statusClass = 'status-sale';
+            if (item.sellStatus === '예약 중') statusClass = 'status-res';
+            else if (item.sellStatus === '거래 완료') statusClass = 'status-comp';
+
+            const imgSrc = item.photo1 ? `/uploads/${item.photo1}` : 'https://via.placeholder.com/300x200?text=No+Image';
+
+            const card = document.createElement('div');
+            card.className = 'item-card';
+            card.onclick = () => location.href = `/item_detail.html?cno=${item.cno}&itemNo=${item.itemNo}`;
+
+            card.innerHTML = `
+                    <span class="status-badge ${statusClass}">${item.sellStatus}</span>
+                    <img src="${imgSrc}" alt="물품 이미지">
+                    <h4 style="margin: 0 0 5px 0; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.title}</h4>
+                    <p style="margin: 0; font-weight: bold; color: #000; font-size: 16px;">${item.price.toLocaleString()}원</p>
+                    <p style="margin: 8px 0 0 0; color: #888; font-size: 12px;">📍 ${item.tradePlace || '장소 미지정'} | 📁 ${item.category}</p>
+                `;
+            grid.appendChild(card);
+        });
+    }
+
+    async function logout() {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        alert("로그아웃 되었습니다.");
+        location.href = '/index.html';
+    }
+</script>
+</body>
+</html>

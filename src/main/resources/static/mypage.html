@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>중고마켓 - 마이페이지</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f5f6f7; margin: 0; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .container { max-width: 900px; margin: 0 auto; }
+        .item-card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 5px solid #ff6f0f; }
+        .item-header { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+        .status-badge { font-weight: bold; padding: 5px 10px; border-radius: 4px; color: white; }
+        .status-sale { background-color: #28a745; }
+        .status-reserve { background-color: #ffc107; color: black; }
+        .status-done { background-color: #6c757d; }
+        .req-box { background: #f9f9f9; padding: 15px; border: 1px solid #eee; border-radius: 4px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-approve { background-color: #007bff; color: white; }
+        .btn-complete { background-color: #ff6f0f; color: white; }
+        .final-price-input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 150px; margin-right: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="header container">
+    <h2 style="margin: 0; color: #ff6f0f; cursor: pointer;" onclick="location.href='/items.html'">🥕 중고마켓 마이페이지</h2>
+    <button class="btn" style="background-color: #888; color: white;" onclick="location.href='/items.html'">메인으로</button>
+</div>
+
+<div class="container" id="myItemsContainer">
+    <h3 style="margin-bottom: 20px;">📦 내가 등록한 물품 관리</h3>
+    <div id="itemList">데이터를 불러오는 중입니다...</div>
+</div>
+
+<script>
+    window.onload = fetchMyItems;
+
+    async function fetchMyItems() {
+        try {
+            const response = await fetch('/api/items/my');
+            if (response.status === 401) {
+                alert("로그인이 필요합니다.");
+                location.href = '/items.html';
+                return;
+            }
+            const items = await response.json();
+            renderItems(items);
+        } catch (error) {
+            console.error("물품 로드 실패:", error);
+        }
+    }
+
+    /**
+     * 내 물품 목록을 화면에 렌더링한다.
+     *
+     * 주의: 과거에 innerHTML += 방식으로 루프를 돌렸을 때,
+     * async/await로 중간에 await가 발생하는 순간 이미 렌더링된 DOM 요소의
+     * 이벤트 핸들러나 input 값이 초기화되는 문제가 있었다.
+     * 현재는 모든 HTML을 배열(rendered)에 모아두었다가 루프가 끝난 후
+     * innerHTML을 한 번만 갱신하는 방식으로 수정되어 있다.
+     */
+    async function renderItems(items) {
+        const container = document.getElementById('itemList');
+        container.innerHTML = '';
+
+        if (items.length === 0) {
+            container.innerHTML = '<p>등록한 물품이 없습니다.</p>';
+            return;
+        }
+
+        const rendered = [];
+
+        for (const item of items) {
+            let badgeClass = 'status-sale';
+            if (item.sellStatus === '예약 중') badgeClass = 'status-reserve';
+            if (item.sellStatus === '거래 완료') badgeClass = 'status-done';
+
+            let actionHtml = '';
+
+            if (item.sellStatus === '판매 중') {
+                // 판매 중인 물품에는 들어온 구매 요청 목록과 승인 버튼을 표시한다
+                const reqs = await fetchItemRequests(item.itemNo);
+                if (reqs.length > 0) {
+                    let reqListHtml = '<h4 style="margin: 10px 0 5px;">💬 들어온 구매 요청</h4>';
+                    reqs.forEach(req => {
+                        reqListHtml += `
+                                <div class="req-box">
+                                    <div>
+                                        <strong>👤 ${req.requestCno}</strong> 님
+                                        | 희망 가격: <span style="color: #e00;">${req.reqPrice.toLocaleString()}원</span> <br>
+                                        <small style="color:#666;">메시지: ${req.reqMessage}</small>
+                                    </div>
+                                    <button class="btn btn-approve" onclick="approveRequest(${item.itemNo}, '${req.requestCno}')">승인하기</button>
+                                </div>
+                            `;
+                    });
+                    actionHtml = reqListHtml;
+                } else {
+                    actionHtml = '<p style="color: #888;">아직 들어온 구매 요청이 없습니다.</p>';
+                }
+            } else if (item.sellStatus === '예약 중') {
+                // 예약 중인 물품에는 최종 금액 입력 후 거래 완료 처리 버튼을 표시한다
+                actionHtml = `
+                        <div class="req-box" style="background-color: #fff8e1;">
+                            <span style="font-weight:bold;">현재 예약 진행 중입니다. 거래를 완료하시겠습니까?</span>
+                            <div>
+                                <input type="number" id="finalPrice_${item.itemNo}" class="final-price-input" placeholder="최종 거래 금액 입력">
+                                <button class="btn btn-complete" onclick="completeTransaction(${item.itemNo})">거래 완료 처리</button>
+                            </div>
+                        </div>
+                    `;
+            } else if (item.sellStatus === '거래 완료') {
+                actionHtml = `<p style="color: #007bff; font-weight:bold;">거래가 완료된 물품입니다. (최종 거래 금액: ${item.finalPrice.toLocaleString()}원)</p>`;
+            }
+
+            rendered.push(`
+                    <div class="item-card">
+                        <div class="item-header">
+                            <h3 style="margin:0;">${item.title}</h3>
+                            <span class="status-badge ${badgeClass}">${item.sellStatus}</span>
+                        </div>
+                        <p style="margin:0 0 10px;">물품 번호: ${item.itemNo} | 등록 가격: ${item.price.toLocaleString()}원</p>
+                        ${actionHtml}
+                    </div>
+                `);
+        }
+
+        // 모든 데이터를 모은 후 DOM을 한 번만 업데이트한다
+        container.innerHTML = rendered.join('');
+    }
+
+    async function fetchItemRequests(itemNo) {
+        const res = await fetch(`/api/requests/list?itemNo=${itemNo}`);
+        return res.ok ? await res.json() : [];
+    }
+
+    async function approveRequest(itemNo, buyerCno) {
+        if (!confirm(buyerCno + ' 님의 요청을 승인하고 예약을 진행하시겠습니까?')) return;
+
+        const res = await fetch('/api/transaction/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ itemNo: itemNo, buyerCno: buyerCno })
+        });
+
+        if (res.ok) {
+            alert(await res.text());
+            fetchMyItems();
+        } else {
+            alert("오류: " + await res.text());
+        }
+    }
+
+    async function completeTransaction(itemNo) {
+        const finalPrice = document.getElementById(`finalPrice_${itemNo}`).value;
+        if (!finalPrice) {
+            alert("최종 거래 금액을 입력해주세요.");
+            return;
+        }
+
+        if (!confirm('정말 이 금액으로 거래 완료 처리를 하시겠습니까?')) return;
+
+        const res = await fetch('/api/transaction/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ itemNo: itemNo, finalPrice: finalPrice })
+        });
+
+        if (res.ok) {
+            alert(await res.text());
+            fetchMyItems();
+        } else {
+            alert("오류: " + await res.text());
+        }
+    }
+</script>
+</body>
+</html>

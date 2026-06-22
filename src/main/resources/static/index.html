@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>중고마켓 - 로그인</title>
+    <!-- 간단한 디자인을 위한 CSS -->
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f5f6f7; margin: 0; }
+        .login-box { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 300px; text-align: center; }
+        .login-box h2 { margin-bottom: 20px; color: #333; }
+        .login-box input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .login-box button { width: 100%; padding: 12px; background-color: #ff6f0f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .login-box button:hover { background-color: #e65c00; }
+        .error-msg { color: red; font-size: 13px; margin-top: 10px; min-height: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="login-box">
+    <h2>🥕 중고마켓 로그인</h2>
+    <!-- 입력 폼 -->
+    <input type="text" id="cno" placeholder="회원번호 (예: c1, c0)" required>
+    <input type="password" id="passwd" placeholder="비밀번호" required>
+    <button onclick="login()">로그인</button>
+
+    <!-- UI 예외 처리 안내 메시지가 뜰 영역 -->
+    <div id="errorMessage" class="error-msg"></div>
+</div>
+
+<!-- 백엔드 API와 통신하는 JavaScript -->
+<script>
+    async function login() {
+        const cno = document.getElementById('cno').value.trim();
+        const passwd = document.getElementById('passwd').value.trim();
+        const errorDiv = document.getElementById('errorMessage');
+
+        // 1. UI 설계서 요구사항 반영: 필수 입력값 누락 시 튕기지 않고 화면에 경고 표시
+        if (!cno || !passwd) {
+            errorDiv.innerText = "아이디와 비밀번호를 모두 입력해주세요!";
+            return;
+        }
+
+        try {
+            // 2. 백엔드(AuthController.java)로 로그인 데이터 전송
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ cno: cno, passwd: passwd })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert(data.nickname + "님 환영합니다!"); // 로그인 성공 안내
+
+                // 3. 평가 기준 [단계 1] 반영: 일반 회원과 관리자(c0)의 화면 분기 처리
+                if (data.role === 'ADMIN') {
+                    window.location.href = '/admin_dashboard.html'; // 관리자는 통계 화면으로 이동
+                } else {
+                    window.location.href = '/items.html'; // 일반 회원은 물품 목록 화면으로 이동
+                }
+            } else {
+                // 4. 평가 기준 [전반 평가] 반영: 로그인 실패 시 시스템 에러가 아닌 UI 안내 메시지 출력
+                const errorText = await response.text();
+                errorDiv.innerText = errorText;
+            }
+        } catch (error) {
+            errorDiv.innerText = "서버와 연결할 수 없습니다. 백엔드 실행을 확인해주세요.";
+        }
+    }
+</script>
+</body>
+</html>

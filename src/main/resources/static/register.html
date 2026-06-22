@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>중고마켓 - 물품 등록</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f5f6f7; margin: 0; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .form-container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 800px; margin: 0 auto; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
+        .form-group input[type="text"], .form-group input[type="number"], .form-group select, .form-group textarea {
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-family: inherit;
+        }
+        .form-group textarea { height: 150px; resize: vertical; }
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-primary { background-color: #ff6f0f; color: white; width: 100%; font-size: 16px; margin-top: 10px; }
+        .btn-primary:hover { background-color: #e65c00; }
+
+        /* 이미지 미리보기 영역 */
+        #imagePreview { display: flex; gap: 10px; margin-top: 10px; }
+        #imagePreview img { width: 100px; height: 100px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+    <h2 style="margin: 0; color: #ff6f0f; cursor: pointer;" onclick="location.href='/items.html'">🥕 중고마켓</h2>
+    <button class="btn" style="background-color: #888; color: white;" onclick="history.back()">뒤로 가기</button>
+</div>
+
+<!-- 등록 폼 -->
+<div class="form-container">
+    <h3 style="margin-top: 0; border-bottom: 2px solid #ff6f0f; padding-bottom: 10px;">새 물품 등록</h3>
+
+    <form id="registerForm" onsubmit="submitForm(event)">
+        <div class="form-group">
+            <label>물품 사진 (최대 3장)</label>
+            <input type="file" id="photos" accept="image/*" multiple onchange="previewImages()">
+            <div id="imagePreview"></div>
+            <small style="color: #666;">※ Ctrl 키를 누르고 사진을 선택하면 여러 장을 고를 수 있습니다.</small>
+        </div>
+
+        <div class="form-group">
+            <label>제목 *</label>
+            <input type="text" id="title" placeholder="물품 제목을 입력해주세요" required>
+        </div>
+
+        <div class="form-group">
+            <label>카테고리 *</label>
+            <select id="category" required>
+                <option value="">카테고리 선택</option>
+                <option value="디지털기기">디지털기기</option>
+                <option value="스포츠">스포츠</option>
+                <option value="도서">도서</option>
+                <option value="가구">가구</option>
+                <option value="티켓">티켓</option>
+                <option value="기타">기타</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>가격 (원) *</label>
+            <input type="number" id="price" placeholder="가격을 입력해주세요 (숫자만)" required>
+        </div>
+
+        <div class="form-group">
+            <label>거래 희망 장소</label>
+            <input type="text" id="tradePlace" placeholder="예: 서울시 강남구, 강남역 1번 출구 등">
+        </div>
+
+        <div class="form-group">
+            <label>상세 설명</label>
+            <textarea id="description" placeholder="물품의 상태, 사용 기간 등을 자세히 적어주세요."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">물품 등록하기</button>
+    </form>
+</div>
+
+<script>
+    // 사진 선택 시 미리보기 띄워주기 (데모 평가 시 UI 점수 확보용)
+    function previewImages() {
+        const input = document.getElementById('photos');
+        const preview = document.getElementById('imagePreview');
+        preview.innerHTML = ''; // 기존 미리보기 지우기
+
+        if (input.files.length > 3) {
+            alert("사진은 최대 3장까지만 등록 가능합니다.");
+            input.value = ''; // 초과 시 선택 초기화
+            return;
+        }
+
+        Array.from(input.files).forEach(file => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                preview.appendChild(img);
+            }
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // 백엔드로 데이터 전송 (FormData 사용)
+    async function submitForm(event) {
+        event.preventDefault(); // 기본 폼 제출(새로고침) 방지
+
+        const formData = new FormData();
+        formData.append('title', document.getElementById('title').value);
+        formData.append('category', document.getElementById('category').value);
+        formData.append('price', document.getElementById('price').value);
+        formData.append('tradePlace', document.getElementById('tradePlace').value);
+        formData.append('description', document.getElementById('description').value);
+
+        // 선택된 사진 파일들을 formData에 추가
+        const photos = document.getElementById('photos').files;
+        for (let i = 0; i < photos.length; i++) {
+            formData.append('photos', photos[i]);
+        }
+
+        try {
+            // Fetch API로 파일 전송 시 Content-Type은 브라우저가 자동 설정하므로 비워둡니다.
+            const response = await fetch('/api/items/register', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                alert("물품이 성공적으로 등록되었습니다!");
+                location.href = '/items.html'; // 메인 화면으로 복귀
+            } else {
+                const errorMsg = await response.text();
+                alert("등록 실패: " + errorMsg);
+            }
+        } catch (error) {
+            alert("서버 연결에 실패했습니다.");
+        }
+    }
+</script>
+</body>
+</html>

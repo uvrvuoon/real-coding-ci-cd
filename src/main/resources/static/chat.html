@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>중고마켓 - 1:1 채팅방</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #b2c7d9; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); z-index: 10; }
+        .header h3 { margin: 0; color: #333; }
+        .btn { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background-color: #888; color: white; }
+        .chat-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .message-wrapper { display: flex; flex-direction: column; max-width: 70%; }
+        .sender-name { font-size: 11px; color: #333; margin-bottom: 4px; font-weight: bold; }
+        .message-box { display: flex; align-items: flex-end; gap: 5px; }
+        .bubble { padding: 10px 15px; border-radius: 15px; font-size: 15px; line-height: 1.4; word-break: break-word; }
+        .meta-info { font-size: 11px; color: #555; display: flex; flex-direction: column; }
+        .read-status { font-weight: bold; color: #ffeb3b; }
+        .read-status.read { color: #555; font-weight: normal; }
+        .message-wrapper.partner { align-self: flex-start; }
+        .message-wrapper.partner .bubble { background-color: white; border: 1px solid #ddd; border-top-left-radius: 2px; }
+        .message-wrapper.partner .message-box { flex-direction: row; }
+        .message-wrapper.mine { align-self: flex-end; align-items: flex-end; }
+        .message-wrapper.mine .bubble { background-color: #ff6f0f; color: white; border-top-right-radius: 2px; }
+        .message-wrapper.mine .message-box { flex-direction: row-reverse; }
+        .message-wrapper.mine .meta-info { align-items: flex-end; }
+        .input-container { background: white; padding: 15px; display: flex; gap: 10px; box-shadow: 0 -2px 5px rgba(0,0,0,0.05); }
+        .input-container input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 15px; }
+        .input-container button { padding: 10px 25px; background-color: #ff6f0f; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <button class="btn" onclick="location.href='/chat_list.html'">◀ 목록</button>
+    <h3 id="chatTitle">👤 대화방</h3>
+    <div style="width: 60px;"></div>
+</div>
+
+<div class="chat-container" id="chatContainer"></div>
+
+<div class="input-container">
+    <input type="text" id="messageInput" placeholder="메시지를 입력하세요..." onkeypress="handleKeyPress(event)">
+    <button onclick="sendMessage()">전송</button>
+</div>
+
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomNo = urlParams.get('roomNo');
+    const partnerCno = urlParams.get('partnerCno');
+
+    // item_detail.html에서 직접 진입하는 경우 sellerCno+itemNo를 받는다
+    const sellerCno = urlParams.get('sellerCno');
+    const itemNo = urlParams.get('itemNo');
+
+    let loginMyId = "";
+
+    window.onload = initChat;
+
+    async function initChat() {
+        await fetchMyId();
+
+        if (sellerCno && itemNo) {
+            // item_detail.html → chat.html 진입 경로: 채팅방을 만들거나 기존 방으로 redirect
+            await createOrGetRoom();
+        } else if (roomNo) {
+            // chat_list.html → chat.html 진입 경로: roomNo가 이미 있으므로 바로 메시지 로드
+            const cleanTitle = partnerCno ? String(partnerCno).replace(/[^a-zA-Z0-9]/g, "").trim() : "상대방";
+            document.getElementById('chatTitle').innerText = `👤 ${cleanTitle} 님과의 대화`;
+
+            fetchMessages();
+            setInterval(fetchMessages, 3000); // 3초마다 폴링하여 실시간 갱신 효과를 낸다
+        } else {
+            alert("잘못된 접근입니다.");
+            location.href = '/items.html';
+        }
+    }
+
+    async function fetchMyId() {
+        try {
+            const response = await fetch('/api/chat/me');
+            if (response.ok) {
+                const text = await response.text();
+                // 영문자/숫자 외 문자(공백, 특수문자) 제거 후 소문자로 정규화
+                loginMyId = text.replace(/[^a-zA-Z0-9]/g, "").trim().toLowerCase();
+                console.log("[인증 확인] 현재 내 세션 ID:", loginMyId);
+            }
+        } catch (error) {
+            console.error("내 세션 조회 실패:", error);
+        }
+    }
+
+    /**
+     * 채팅방 생성 또는 기존 방 진입.
+     * 서버에서 roomNo를 받으면 해당 roomNo를 URL 파라미터로 갖는 chat.html로 redirect한다.
+     * location.replace를 사용해 브라우저 히스토리에 중간 상태가 쌓이지 않도록 한다.
+     */
+    async function createOrGetRoom() {
+        try {
+            const response = await fetch('/api/chat/room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ sellerCno: sellerCno, itemNo: itemNo })
+            });
+
+            if (response.ok) {
+                const newRoomNo = await response.text();
+                location.replace(`/chat.html?roomNo=${newRoomNo}&partnerCno=${sellerCno}`);
+            } else {
+                const errorMsg = await response.text();
+                alert("채팅방 입장 실패: " + errorMsg);
+                history.back();
+            }
+        } catch (error) {
+            console.error("채팅방 생성 오류:", error);
+        }
+    }
+
+    async function fetchMessages() {
+        if (!roomNo) return;
+        try {
+            const response = await fetch(`/api/chat/messages/${roomNo}`);
+            if (response.ok) {
+                const messages = await response.json();
+                renderMessages(messages);
+            }
+        } catch (error) {
+            console.error("메시지 로드 오류:", error);
+        }
+    }
+
+    /**
+     * 메시지 목록을 화면에 렌더링한다.
+     *
+     * sender 판별 방식:
+     *   - 백엔드 getMessages API가 DB의 "S"/"B"를 실제 회원 ID로 변환해서 내려준다.
+     *   - cleanSender(상대 ID 또는 내 ID)를 loginMyId와 비교해 좌우 정렬을 결정한다.
+     *   - 비교 전 영문자/숫자만 남기고 소문자로 정규화해 공백·특수문자 오판을 막는다.
+     *
+     * 스크롤 처리:
+     *   - 이미 맨 아래에 있을 때만 자동 스크롤한다 (50px 여유 범위 적용).
+     *   - 사용자가 위쪽을 읽는 도중에 새 메시지가 와도 강제 스크롤되지 않는다.
+     */
+    function renderMessages(messages) {
+        const container = document.getElementById('chatContainer');
+        const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+
+        container.innerHTML = '';
+
+        if (messages.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#555; margin-top:20px;">메시지를 보내 대화를 시작해보세요!</div>';
+            return;
+        }
+
+        messages.forEach(msg => {
+            const cleanSender = String(msg.sender).replace(/[^a-zA-Z0-9]/g, "").trim().toLowerCase();
+            const cleanMyId = String(loginMyId).trim().toLowerCase();
+
+            const isMine = (cleanSender === cleanMyId);
+            const wrapperClass = isMine ? 'mine' : 'partner';
+
+            const dateObj = new Date(msg.sentDateTime);
+            const timeString = dateObj.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+
+            // 읽음 배지는 내가 보낸 메시지에만 표시한다
+            const readStatusHtml = msg.isRead === 'Y'
+                ? `<span class="read-status read">읽음</span>`
+                : `<span class="read-status">안 읽음</span>`;
+
+            const msgHtml = `
+                    <div class="message-wrapper ${wrapperClass}">
+                        <div class="sender-name">👤 ${cleanSender}</div>
+                        <div class="message-box">
+                            <div class="bubble">${msg.content}</div>
+                            <div class="meta-info">
+                                ${isMine ? readStatusHtml : ''}
+                                <span>${timeString}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            container.insertAdjacentHTML('beforeend', msgHtml);
+        });
+
+        if (isScrolledToBottom || messages.length > 0) {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const content = input.value.trim();
+        if (!content) return;
+
+        try {
+            const response = await fetch('/api/chat/message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ roomNo: roomNo, content: content })
+            });
+
+            if (response.ok) {
+                input.value = '';
+                fetchMessages();
+            } else {
+                alert("메시지 전송에 실패했습니다.");
+            }
+        } catch (error) {
+            console.error("메시지 전송 오류:", error);
+        }
+    }
+
+    function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    }
+</script>
+</body>
+</html>
